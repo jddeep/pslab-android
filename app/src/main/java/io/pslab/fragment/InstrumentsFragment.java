@@ -18,12 +18,15 @@ import io.pslab.R;
 import io.pslab.activity.AccelerometerActivity;
 import io.pslab.activity.BarometerActivity;
 import io.pslab.activity.CompassActivity;
+import io.pslab.activity.GyroscopeActivity;
 import io.pslab.activity.LogicalAnalyzerActivity;
 import io.pslab.activity.LuxMeterActivity;
 import io.pslab.activity.MultimeterActivity;
 import io.pslab.activity.OscilloscopeActivity;
 import io.pslab.activity.PowerSourceActivity;
+import io.pslab.activity.RoboticArmActivity;
 import io.pslab.activity.SensorActivity;
+import io.pslab.activity.ThermometerActivity;
 import io.pslab.activity.WaveGeneratorActivity;
 import io.pslab.adapters.ApplicationAdapter;
 import io.pslab.items.ApplicationItem;
@@ -101,6 +104,18 @@ public class InstrumentsFragment extends Fragment {
                                 intent = new Intent(context, CompassActivity.class);
                                 startActivity(intent);
                                 break;
+                            case "Gyroscope":
+                                intent = new Intent(context, GyroscopeActivity.class);
+                                startActivity(intent);
+                                break;
+                            case "Thermometer":
+                                intent = new Intent(context, ThermometerActivity.class);
+                                startActivity(intent);
+                                break;
+                            case "Robotic Arm":
+                                intent = new Intent(context, RoboticArmActivity.class);
+                                startActivity(intent);
+                                break;
                             default:
                                 break;
                         }
@@ -143,7 +158,11 @@ public class InstrumentsFragment extends Fragment {
                     R.string.lux_meter_description,
                     R.string.accelerometer_description,
                     R.string.baro_meter_description,
-                    R.string.compass_description
+                    R.string.compass_description,
+                    R.string.gyroscope_description,
+                    R.string.thermometer_desc,
+                    R.string.robotic_arm_descriptoin
+
             };
 
             applicationItemList.add(new ApplicationItem(
@@ -175,6 +194,15 @@ public class InstrumentsFragment extends Fragment {
             ));
             applicationItemList.add(new ApplicationItem(
                     getResources().getString(R.string.compass), R.drawable.tile_icon_compass, getResources().getString(descriptions[9])
+            ));
+            applicationItemList.add(new ApplicationItem(
+                    getResources().getString(R.string.gyroscope), R.drawable.gyroscope_logo, getResources().getString(descriptions[10])
+            ));
+            applicationItemList.add(new ApplicationItem(
+                    getResources().getString(R.string.thermometer), R.drawable.thermometer_logo, getResources().getString(descriptions[11])
+                    ));
+            applicationItemList.add(new ApplicationItem(
+                    getResources().getString(R.string.robotic_arm), R.drawable.gyroscope_logo, getResources().getString(descriptions[11])
             ));
             return null;
         }

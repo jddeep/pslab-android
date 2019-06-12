@@ -10,9 +10,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomSheetBehavior;
+import android.support.design.widget.CoordinatorLayout;
+import android.support.design.widget.Snackbar;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.TooltipCompat;
 import android.util.DisplayMetrics;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
@@ -30,7 +33,10 @@ import android.widget.Toast;
 import com.warkiz.widget.IndicatorSeekBar;
 
 import io.pslab.R;
+import io.pslab.DataFormatter;
 import io.pslab.communication.ScienceLab;
+import io.pslab.others.CSVLogger;
+import io.pslab.others.CustomSnackBar;
 import io.pslab.others.MathUtils;
 import io.pslab.others.ScienceLabCommon;
 import io.pslab.others.SwipeGestureDetector;
@@ -140,12 +146,17 @@ public class WaveGeneratorActivity extends AppCompatActivity {
     @BindView(R.id.sheet_slide_text)
     TextView bottomSheetSlideText;
 
+    @BindView(R.id.show_guide_wave_generator)
+    TextView showText;
+
     private int leastCount, seekMax, seekMin;
     private String unit;
     private Timer waveGenCounter;
     private Handler wavegenHandler = new Handler();
     private final long LONG_CLICK_DELAY = 100;
     private AlertDialog waveDialog;
+    private boolean btnLongpressed;
+    private CSVLogger csvLogger;
 
     public enum WaveConst {WAVETYPE, WAVE1, WAVE2, SQR1, SQR2, SQR3, SQR4, FREQUENCY, PHASE, DUTY, SQUARE, PWM}
 
@@ -171,6 +182,7 @@ public class WaveGeneratorActivity extends AppCompatActivity {
     private static boolean waveMonSelected;
     private TextView activePropTv = null;
     private TextView activePwmPinTv = null;
+    private CoordinatorLayout coordinatorLayout;
 
     ScienceLab scienceLab;
     BottomSheetBehavior bottomSheetBehavior;
@@ -178,28 +190,19 @@ public class WaveGeneratorActivity extends AppCompatActivity {
     public static final String PREFS_NAME = "customDialogPreference";
 
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_wave_generator_main);
         ButterKnife.bind(this);
 
-        if (Build.VERSION.SDK_INT < 16) {
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                    WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        }
-        else {
-            View decorView = getWindow().getDecorView();
+        removeStatusBar();
 
-            decorView.setSystemUiVisibility((View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY));
-        }
-
+        coordinatorLayout = findViewById(R.id.wave_generator_coordinator_layout);
+        csvLogger = new CSVLogger(getString(R.string.wave_generator));
         scienceLab = ScienceLabCommon.scienceLab;
         if (!WaveGeneratorCommon.isInitialized) {
             new WaveGeneratorCommon(true);
@@ -209,7 +212,7 @@ public class WaveGeneratorActivity extends AppCompatActivity {
         tvShadow.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(bottomSheetBehavior.getState()==BottomSheetBehavior.STATE_EXPANDED)
+                if (bottomSheetBehavior.getState() == BottomSheetBehavior.STATE_EXPANDED)
                     bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
                 tvShadow.setVisibility(View.GONE);
             }
@@ -228,7 +231,15 @@ public class WaveGeneratorActivity extends AppCompatActivity {
                 }
             }
         });
-
+        waveMonWave1.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!waveBtnActive.equals(WaveConst.WAVE1)) {
+                    waveMonSelected = true;
+                    selectBtn(WaveConst.WAVE1);
+                }
+            }
+        });
         btnCtrlWave2.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -238,7 +249,15 @@ public class WaveGeneratorActivity extends AppCompatActivity {
                 }
             }
         });
-
+        waveMonWave2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!waveBtnActive.equals(WaveConst.WAVE2)) {
+                    waveMonSelected = true;
+                    selectBtn(WaveConst.WAVE2);
+                }
+            }
+        });
         imgBtnSin.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -431,7 +450,7 @@ public class WaveGeneratorActivity extends AppCompatActivity {
         seekBar.setOnSeekChangeListener(new IndicatorSeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(IndicatorSeekBar seekBar, int progress, float progressFloat, boolean fromUserTouch) {
-                String valueText = String.valueOf((float) progress) + " " + unit;
+                String valueText = DataFormatter.formatDouble((float) progress, DataFormatter.MEDIUM_PRECISION_FORMAT) + " " + unit;
                 if (waveMonSelected) {
                     waveMonPropValueSelect.setText(valueText);
                 } else {
@@ -454,6 +473,116 @@ public class WaveGeneratorActivity extends AppCompatActivity {
                 //do nothing
             }
         });
+
+        ImageView guideImageView = findViewById(R.id.wave_generator_guide_button);
+        guideImageView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                bottomSheetBehavior.setState(bottomSheetBehavior.getState() == BottomSheetBehavior.STATE_HIDDEN ?
+                        BottomSheetBehavior.STATE_EXPANDED : BottomSheetBehavior.STATE_HIDDEN);
+            }
+        });
+        guideImageView.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                showText.setVisibility(View.VISIBLE);
+                btnLongpressed = true;
+                return true;
+            }
+        });
+        guideImageView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                v.onTouchEvent(event);
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    if (btnLongpressed) {
+                        showText.setVisibility(View.GONE);
+                        btnLongpressed = false;
+                    }
+                }
+                return true;
+            }
+        });
+    }
+
+    public void saveWaveConfig(View view) {
+        String data = "Mode,Wave,Shape,Freq,Phase,Duty\n";
+        double freq1 = (double) (WaveGeneratorCommon.wave.get(WaveConst.WAVE1).get(WaveConst.FREQUENCY));
+        double freq2 = (double) WaveGeneratorCommon.wave.get(WaveConst.WAVE2).get(WaveConst.FREQUENCY);
+        double phase = (double) WaveGeneratorCommon.wave.get(WaveConst.WAVE2).get(WaveConst.PHASE);
+
+        String waveType1 = WaveGeneratorCommon.wave.get(WaveConst.WAVE1).get(WaveConst.WAVETYPE) == SIN ? "sine" : "tria";
+        String waveType2 = WaveGeneratorCommon.wave.get(WaveConst.WAVE2).get(WaveConst.WAVETYPE) == SIN ? "sine" : "tria";
+
+        if (scienceLab.isConnected()) {
+            if (digital_mode == WaveConst.SQUARE) {
+                double freqSqr1 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR1).get(WaveConst.FREQUENCY);
+                double dutySqr1 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR1).get(WaveConst.DUTY);
+                data += "Square,Wave1," + waveType1 + "," + String.valueOf(freq1) + ",0,0\n"; //wave1
+                data += "Square,Wave2," + waveType2 + "," + String.valueOf(freq2) + "," + String.valueOf(phase) + ",0\n";//wave2
+                data += "Sqaure,Sq1," + "sqaure," + String.valueOf(freqSqr1) + ",0," + String.valueOf(dutySqr1) + "\n"; //Sq1
+            } else {
+                double freqSqr1 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR1).get(WaveConst.FREQUENCY);
+                double dutySqr1 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR1).get(WaveConst.DUTY) / 100;
+                double dutySqr2 = ((double) WaveGeneratorCommon.wave.get(WaveConst.SQR2).get(WaveConst.DUTY)) / 100;
+                double phaseSqr2 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR2).get(WaveConst.PHASE) / 360;
+                double dutySqr3 = ((double) WaveGeneratorCommon.wave.get(WaveConst.SQR3).get(WaveConst.DUTY)) / 100;
+                double phaseSqr3 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR3).get(WaveConst.PHASE) / 360;
+                double dutySqr4 = ((double) WaveGeneratorCommon.wave.get(WaveConst.SQR4).get(WaveConst.DUTY)) / 100;
+                double phaseSqr4 = (double) WaveGeneratorCommon.wave.get(WaveConst.SQR4).get(WaveConst.PHASE) / 360;
+
+                data += "PWM,Sq1,PWM," + String.valueOf(freqSqr1) + ",0," + String.valueOf(dutySqr1) + "\n";
+                data += "PWM,Sq2,PWM," + String.valueOf(freqSqr1) + "," + String.valueOf(phaseSqr2) + "," + String.valueOf(dutySqr2) + "\n";
+                data += "PWM,Sq3,PWM," + String.valueOf(freqSqr1) + "," + String.valueOf(phaseSqr3) + "," + String.valueOf(dutySqr3) + "\n";
+                data += "PWM,Sq4,PWM," + String.valueOf(freqSqr1) + "," + String.valueOf(phaseSqr4) + "," + String.valueOf(dutySqr4) + "\n";
+            }
+            csvLogger.prepareLogFile();
+            csvLogger.writeCSVFile(data);
+            CustomSnackBar.showSnackBar(coordinatorLayout,
+                    getString(R.string.csv_store_text) + " " + csvLogger.getCurrentFilePath()
+                    , getString(R.string.delete_capital), new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            new android.app.AlertDialog.Builder(WaveGeneratorActivity.this, R.style.AlertDialogStyle)
+                                    .setTitle(R.string.delete_file)
+                                    .setMessage(R.string.delete_warning)
+                                    .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialogInterface, int i) {
+                                            csvLogger.deleteFile();
+                                        }
+                                    })
+                                    .setNegativeButton(R.string.cancel, null)
+                                    .create()
+                                    .show();
+                        }
+                    }, Snackbar.LENGTH_SHORT);
+
+        } else {
+            Toast.makeText(WaveGeneratorActivity.this, R.string.device_not_connected, Toast.LENGTH_SHORT).show();
+        }
+    }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        removeStatusBar();
+    }
+
+    private void removeStatusBar() {
+        if (Build.VERSION.SDK_INT < 16) {
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        } else {
+            View decorView = getWindow().getDecorView();
+
+            decorView.setSystemUiVisibility((View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY));
+        }
     }
 
     public void selectBtn(WaveConst btn_selected) {
@@ -463,8 +592,9 @@ public class WaveGeneratorActivity extends AppCompatActivity {
             case WAVE1:
 
                 waveBtnActive = WaveConst.WAVE1;
-                waveMonWave1.setEnabled(true);
-                waveMonWave2.setEnabled(false);
+
+                waveMonWave1.setTextColor(getResources().getColor(R.color.orange));
+                waveMonWave2.setTextColor(getResources().getColor(R.color.dark_grey));
 
                 btnCtrlPhase.setEnabled(false);  //disable phase for wave
                 wavePhaseValue.setText("--");
@@ -477,8 +607,9 @@ public class WaveGeneratorActivity extends AppCompatActivity {
             case WAVE2:
 
                 waveBtnActive = WaveConst.WAVE2;
-                waveMonWave1.setEnabled(false);
-                waveMonWave2.setEnabled(true);
+
+                waveMonWave2.setTextColor(getResources().getColor(R.color.orange));
+                waveMonWave1.setTextColor(getResources().getColor(R.color.dark_grey));
 
                 btnCtrlPhase.setEnabled(true); // enable phase for wave2
 
@@ -535,8 +666,8 @@ public class WaveGeneratorActivity extends AppCompatActivity {
 
             default:
                 waveBtnActive = WaveConst.WAVE1;
-                waveMonWave1.setEnabled(true);
-                waveMonWave2.setEnabled(false);
+                waveMonWave1.setTextColor(getResources().getColor(R.color.orange));
+                waveMonWave2.setTextColor(getResources().getColor(R.color.dark_grey));
                 btnCtrlPhase.setEnabled(false);  //disable phase for wave
                 wavePhaseValue.setText("--");
                 selectWaveform(WaveGeneratorCommon.wave.get(waveBtnActive).get(WaveConst.WAVETYPE));
@@ -694,7 +825,7 @@ public class WaveGeneratorActivity extends AppCompatActivity {
         }
 
         Double dValue = (double) value;
-        String valueText = String.valueOf(dValue) + " " + unit;
+        String valueText = DataFormatter.formatDouble(dValue, DataFormatter.MEDIUM_PRECISION_FORMAT) + " " + unit;
         activePropTv.setText(valueText);
 
     }
